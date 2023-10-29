@@ -102,6 +102,7 @@ class REAL_TIME_PACER:
                 self.processFunction()
                 # stop the timer
                 self.elapsedTime = timerForLooping.toc()
+                print("Elapsed Time: ", self.elapsedTime, " seconds.")
                 if self.elapsedTime <= self.samplingTime:
                     self.processCounter += 1
                     self.waitTime = self.samplingTime - self.elapsedTime

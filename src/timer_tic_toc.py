@@ -16,16 +16,31 @@ import time
 # - delay(delayTime) function stops the program counter
 #   for a given delayTime value in seconds.
 # ---------------------------------------------------------
+
+def high_precision_sleep(duration):
+    start_time = time.perf_counter()
+    while True:
+        elapsed_time = time.perf_counter() - start_time
+        remaining_time = duration - elapsed_time
+        if remaining_time <= 0:
+            break
+        if remaining_time > 0.02:  # Sleep for 5ms if remaining time is greater
+            time.sleep(max(remaining_time/2, 0.0001))  # Sleep for the remaining time or minimum sleep interval
+        else:
+            pass
+
 class TIMER_TIC_TOC:
 
     def __init__(self):
         self.ticStartTime = 0
 
-    def tic(self):  # initialize the timer start point
-        self.ticStartTime = time.time()
+    def tic(self):
+        self.ticStartTime = time.perf_counter()
 
-    def toc(self):  # computes the elapsed time between tic() and toc()
-        return time.time() - self.ticStartTime
+    def toc(self):
+        return time.perf_counter() - self.ticStartTime
 
-    def delay(self, delayTime):
-        time.sleep(delayTime)
+    @staticmethod
+    def delay(delayTime):
+        high_precision_sleep(delayTime)
+        # time.sleep(delayTime)
