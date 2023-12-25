@@ -1,4 +1,12 @@
+# TODO LIST
+# - Pythonic şekilde yazılacak.
+# - Pacerda bulunan stateler override edilmeye uygun yazılacak. (def haline getirilecek)
+
 from timer_tic_toc import TIMER_TIC_TOC as timer
+from serial import Serial
+from typing import Optional
+from enum import Enum
+import time
 
 timerForLooping = timer()  # to compute elapsed time for a process.
 timerForWholeProcess = timer()  # to compute elapsed time for all state machine algorithm.
@@ -11,6 +19,12 @@ WAIT = 3
 FINISH = 4
 END = 5
 OVERRUN = 6
+SERIAL = 7
+
+
+class SerialStore(int, Enum):
+    LIST = 0
+    SINGLE_VALUE = 1
 
 
 # ---------------------------------------------------------
@@ -46,7 +60,14 @@ class REAL_TIME_PACER:
     # SimulationTime    => defines the simulation duration in seconds.         (Default = 1 seconds)
     # samplingTime      => defines the sampling period for solver in seconds.  (Default = 0.01 seconds)
     # =====================================================================================================
-    def __init__(self, externalFunction, simulationTime=1, samplingTime=1e-2):
+    def __init__(self, externalFunction,
+                 simulationTime=1,
+                 samplingTime=1e-2,
+                 serial_port=None,
+                 serial_baudrate=9600,
+                 serial_delay=0.1,
+                 serial_timeout=15,
+                 serial_value_mode: Optional[SerialStore] = SerialStore.SINGLE_VALUE):
 
         self.SoftwareVersion = "1.0.0"  # manipulate only when stable versions are changed!
 
@@ -57,9 +78,17 @@ class REAL_TIME_PACER:
         if samplingTime <= 0:
             print("Sampling period must be positive!")
 
+        self.serial_connection: Optional[Serial] = None
+        if serial_port is not None:
+            self.serial_connection = Serial(serial_port, serial_baudrate)
+
+        self.serial_value_mode = serial_value_mode
+        self.serial_values = []
+        self.serial_timeout = serial_timeout
+        self.serial_delay = serial_delay
+
         # assign the externally defined process function to self object.
         self.processFunction = externalFunction
-
         self.simulationTime = simulationTime
         self.samplingTime = samplingTime
         self.INITIALIZATION = INIT
@@ -68,6 +97,7 @@ class REAL_TIME_PACER:
         self.WAIT = WAIT
         self.FINISH = FINISH
         self.OVERRUN = OVERRUN
+        self.SERIAL = SERIAL
 
         # Initialization phase starts
         STATE = INIT
@@ -154,6 +184,25 @@ class REAL_TIME_PACER:
                 STATE = WAIT
 
                 return STATE
+
+            case self.SERIAL:
+                if self.serial_connection is None:
+                    raise RuntimeError("Serial connection is not initialized!")
+                if self.serial_connection.is_open is False:
+                    raise RuntimeError("Serial connection is not open!")
+                start_time = time.time()
+                while True:
+                    if self.serial_connection.in_waiting > 0:
+                        data = self.serial_connection.readline().decode().strip()
+                        if self.serial_value_mode is SerialStore.LIST:
+                            self.serial_values.append(data)
+                        elif self.serial_value_mode is SerialStore.SINGLE_VALUE:
+                            self.serial_values.clear()
+                            self.serial_values.append(data)
+                        break
+                    if time.time() - start_time > self.serial_timeout:
+                        raise TimeoutError("Serial connection timeout! ({} seconds)".format(self.serial_timeout))
+                    time.sleep(self.serial_delay)
 
             case self.FINISH:
                 self.totalSimulatedTime = timerForWholeProcess.toc()
