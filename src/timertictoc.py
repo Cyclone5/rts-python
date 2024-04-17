@@ -25,11 +25,12 @@ def high_precision_sleep(duration):
         if remaining_time <= 0:
             break
         if remaining_time > 0.02:  # Sleep for 5ms if remaining time is greater
-            time.sleep(max(remaining_time/2, 0.0001))  # Sleep for the remaining time or minimum sleep interval
+            time.sleep(max(remaining_time / 2, 0.0001))  # Sleep for the remaining time or minimum sleep interval
         else:
             pass
 
-class TIMER_TIC_TOC:
+
+class TimerTicToc:
 
     def __init__(self):
         self.ticStartTime = 0
@@ -41,6 +42,6 @@ class TIMER_TIC_TOC:
         return time.perf_counter() - self.ticStartTime
 
     @staticmethod
-    def delay(delayTime):
-        high_precision_sleep(delayTime)
+    def delay(delay_time):
+        high_precision_sleep(delay_time)
         # time.sleep(delayTime)

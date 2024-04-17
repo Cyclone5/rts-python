@@ -1,37 +1,15 @@
-# TODO LIST
-# - Previous statelerı kayıt edelim.
-# - real time'ın process kısmında geçen süreye başlangıçta gelen serial süresi hesaba katılacak mı?
 # 02.01.2024
-# - @properties eklenecek single valueysa 0'ıncı olan eğer listse listenin tamamını döndüreceğiz.
 # - iterasyonlar arası kod yazabileceği bir yapı haline getireceğim while yerine for koyup istediği kadar ilerletip sonra bekletme yapısı
-# @TODO serial connection elapsed time
 # for debug mode logging libary
 
-from timertictoc import TimerTicToc as Timer
 from serial import Serial
-from typing import Optional
-from enum import Enum
-import time
+from typing import Optional, List
+
+from src.timertictoc import TimerTicToc as Timer
+from src.schemas import PacerState, SerialStore, PacerPoint, PacerFunction, Plots
 
 timerForLooping = Timer()  # to compute elapsed time for a process.
 timerForWholeProcess = Timer()  # to compute elapsed time for all state machine algorithm.
-
-
-# define the necessary states for state-machine pacer
-class PacerState(int, Enum):
-    INIT = 0
-    PROCESS = 1
-    UPDATE = 2
-    WAIT = 3
-    FINISH = 4
-    END = 5
-    OVERRUN = 6
-    SERIAL = 7
-
-
-class SerialStore(int, Enum):
-    LIST = 0
-    SINGLE_VALUE = 1
 
 
 # ---------------------------------------------------------
@@ -71,15 +49,14 @@ class RealTimePacer:
                  external_function,
                  simulation_time=1,
                  sampling_time=1e-2,
+                 pacer_added_function: Optional[List[PacerFunction]] = None,
                  serial_port=None,
                  serial_baudrate=9600,
                  serial_delay=0.1,
                  serial_timeout=15,
-                 serial_value_mode: Optional[SerialStore] = SerialStore.SINGLE_VALUE,
-                 serial_read_wish="SERIAL_READ"
+                 serial_value_mode: Optional[SerialStore] = SerialStore.LIST,
+                 serial_read_wish="READ\n"
                  ):
-
-        self.SoftwareVersion = "1.0.0"  # manipulate only when stable versions are changed!
 
         if simulation_time <= 0:
             raise ValueError("Simulation time must be positive!")
@@ -99,8 +76,12 @@ class RealTimePacer:
         # self.serial_delay = serial_delay
         self.serial_read_wish = self._take_bytes(serial_read_wish)
 
-        # Pacer History
+        # Pacer History, Plots
         self.pacer_history = PacerHistory()
+        self.plots = Plots()
+
+        # Pacer Added Functions
+        self.pacer_functions = pacer_added_function
 
         # assign the externally defined process function to self object.
         self.processFunction = external_function
@@ -123,9 +104,6 @@ class RealTimePacer:
         self.totalSimulatedTime = 0  # defines the total simulation time including NOPs.
         self.overrunCounter = 0  # defines the total iteration number where the overrun occurs.
         self.overrunCases = 0  # defines the how many loops are over-runed
-
-    def getSoftwareVersion(self):  # to get sofware version
-        return self.SoftwareVersion
 
     def Pacer(self, state):
 
@@ -239,12 +217,11 @@ class RealTimePacer:
         data = self.serial_connection.readline()
         if data == b'':
             raise TimeoutError("Serial connection timeout! ({} seconds)".format(self.serial_timeout))
-        if self.serial_value_mode is SerialStore.LIST:
+        if self.serial_value_mode == SerialStore.LIST:
             self.serial_values.append(data)
-        elif self.serial_value_mode is SerialStore.SINGLE_VALUE:
+        elif self.serial_value_mode == SerialStore.SINGLE_VALUE:
             self.serial_values.clear()
             self.serial_values.append(data)
-        # time.sleep(self.serial_delay)
 
         state = PacerState.PROCESS
         return state
@@ -259,7 +236,6 @@ class RealTimePacer:
         print(" => Total iteration that process is run: ", self.processCounter, " iterations")
         print(" => # of iteration that Overrun detected: ", self.overrunCounter, " iterations")
         print("============================================================================")
-        print(self.serial_values)
         state = PacerState.END
         return state
 
@@ -272,12 +248,47 @@ class RealTimePacer:
             return bytes(data, 'utf-8')
         elif isinstance(data, int):
             return data.to_bytes(2, byteorder='big')
+        elif isinstance(data, bytes):
+            return data
 
-    def pacerDriver(self):
+    @property
+    def serial_values(self):
+        if self.serial_value_mode == SerialStore.LIST:
+            return self._serial_values
+        elif self.serial_value_mode == SerialStore.SINGLE_VALUE:
+            # if it has first element, return it, otherwise return None
+            if self._serial_values:
+                return self._serial_values[0]
+            else:
+                return []
+
+    @serial_values.setter
+    def serial_values(self, value):
+        self._serial_values = value
+
+    def send_serial(self, data):
+        if self.serial_connection is None:
+            raise RuntimeError("Serial connection is not initialized!")
+        if self.serial_connection.is_open is False:
+            raise RuntimeError("Serial connection is not open!")
+        self.serial_connection.write(self._take_bytes(data))
+
+    def pacer_point(self, state: PacerState, mode: PacerPoint):
+        if self.pacer_functions is None:
+            return  # if there is no pacer function, return.
+        for f in self.pacer_functions:
+            if f.state == state and f.mode == mode:
+                f.function(*f.args, **f.kwargs)
+
+    def pacer_driver(self):
         # this function is employed to run pacer state machine.
         state_in_loop = PacerState.INIT
         while True:
-            state_in_loop = self.Pacer(state_in_loop)  # loop the paceer with state
+            current_state = state_in_loop  # eğer bu olmazsa afterda problem olur
+            self.pacer_history.append(current_state)
+            self.pacer_point(current_state, PacerPoint.BEFORE)
+            state_in_loop = self.Pacer(state_in_loop)  # loop the pacer with state
+            self.pacer_point(current_state, PacerPoint.AFTER)
             if state_in_loop is PacerState.END:
                 break  # leave the pacer.
 
