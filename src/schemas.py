@@ -34,7 +34,8 @@ class PacerFunction(BaseModel):
 
     @field_validator('function')
     def function_validator(cls, v):
-        print(type(v))
+        if type(v) != type(lambda: None):
+            raise ValueError('function must be callable')
         if not callable(v):
             raise ValueError('function must be callable')
         return v

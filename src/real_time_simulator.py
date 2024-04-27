@@ -247,7 +247,7 @@ class RealTimePacer:
         if isinstance(data, str):
             return bytes(data, 'utf-8')
         elif isinstance(data, int):
-            return data.to_bytes(2, byteorder='big')
+            return data.to_bytes(1, byteorder='big')
         elif isinstance(data, bytes):
             return data
 
@@ -273,12 +273,19 @@ class RealTimePacer:
             raise RuntimeError("Serial connection is not open!")
         self.serial_connection.write(self._take_bytes(data))
 
-    def pacer_point(self, state: PacerState, mode: PacerPoint):
+    def _pacer_point(self, state: PacerState, mode: PacerPoint):
         if self.pacer_functions is None:
             return  # if there is no pacer function, return.
         for f in self.pacer_functions:
             if f.state == state and f.mode == mode:
-                f.function(*f.args, **f.kwargs)
+                if f.args is not None and f.kwargs is not None:
+                    f.function(*f.args, **f.kwargs)
+                elif f.args is not None:
+                    f.function(*f.args)
+                elif f.kwargs is not None:
+                    f.function(**f.kwargs)
+                else:
+                    f.function()
 
     def pacer_driver(self):
         # this function is employed to run pacer state machine.
@@ -286,9 +293,10 @@ class RealTimePacer:
         while True:
             current_state = state_in_loop  # eğer bu olmazsa afterda problem olur
             self.pacer_history.append(current_state)
-            self.pacer_point(current_state, PacerPoint.BEFORE)
+            self._pacer_point(current_state, PacerPoint.BEFORE)
+            # print(f"Current State: {current_state}")  # debug mode
             state_in_loop = self.Pacer(state_in_loop)  # loop the pacer with state
-            self.pacer_point(current_state, PacerPoint.AFTER)
+            self._pacer_point(current_state, PacerPoint.AFTER)
             if state_in_loop is PacerState.END:
                 break  # leave the pacer.
 
