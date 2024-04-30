@@ -1,6 +1,7 @@
 # 02.01.2024
 # - iterasyonlar arası kod yazabileceği bir yapı haline getireceğim while yerine for koyup istediği kadar ilerletip sonra bekletme yapısı
 # for debug mode logging libary
+# TODO simülasyonu sonlandırma fonksiyonu bu olursa finishe götür.
 
 from serial import Serial
 from typing import Optional, List
@@ -191,7 +192,7 @@ class RealTimePacer:
         # program should wait 0.055 seconds for the next iteration, and elpasedIteration
         # should be increased by 3 = ceil((executionTime / samplingTime)),
         # and return a warning message
-        timerForLooping.delay(self.waitTime)  # wait for the t(n+1) - t(n) is elapsed.
+        Timer.delay(self.waitTime)  # wait for the t(n+1) - t(n) is elapsed.
         # wait process is done!, now it is time to update simulation parameters
         state = PacerState.UPDATE
         return state
