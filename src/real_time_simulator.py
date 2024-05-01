@@ -1,16 +1,12 @@
 # 02.01.2024
 # - iterasyonlar arası kod yazabileceği bir yapı haline getireceğim while yerine for koyup istediği kadar ilerletip sonra bekletme yapısı
 # for debug mode logging libary
-# TODO simülasyonu sonlandırma fonksiyonu bu olursa finishe götür.
 
 from serial import Serial
 from typing import Optional, List
 
 from src.timertictoc import TimerTicToc as Timer
 from src.schemas import PacerState, SerialStore, PacerPoint, PacerFunction, Plots
-
-timerForLooping = Timer()  # to compute elapsed time for a process.
-timerForWholeProcess = Timer()  # to compute elapsed time for all state machine algorithm.
 
 
 # ---------------------------------------------------------
@@ -64,6 +60,14 @@ class RealTimePacer:
 
         if sampling_time <= 0:
             raise ValueError("Sampling time must be positive!")
+
+        # Finisher
+        self.finisher = False
+        self.finish_counter = 1
+
+        # Timers
+        self.timerForLooping = Timer()  # to compute elapsed time for a process.
+        self.timerForWholeProcess = Timer()  # to compute elapsed time for all state machine algorithm.
 
         # Serial Init
 
@@ -139,16 +143,16 @@ class RealTimePacer:
             state = PacerState.PROCESS  # start the process.
         else:
             state = PacerState.SERIAL
-        timerForWholeProcess.tic()  # start the timer after initialization is performed.
+        self.timerForWholeProcess.tic()  # start the timer after initialization is performed.
         return state
 
     def pacer_process(self):
         # start the timer
-        timerForLooping.tic()
+        self.timerForLooping.tic()
         # run the process function
         self.processFunction()
         # stop the timer
-        self.elapsedTime = timerForLooping.toc()
+        self.elapsedTime = self.timerForLooping.toc()
         print("Elapsed Time: ", self.elapsedTime, " seconds.")
         state = None
         if self.elapsedTime <= self.samplingTime:
@@ -228,7 +232,7 @@ class RealTimePacer:
         return state
 
     def pacer_finish(self):
-        self.totalSimulatedTime = timerForWholeProcess.toc()
+        self.totalSimulatedTime = self.timerForWholeProcess.toc()
         print("============================================================================")
         print(" => Simulation is over!")
         # Output the simulation related parameters
@@ -288,15 +292,35 @@ class RealTimePacer:
                 else:
                     f.function()
 
+    def execute_finish(self, finisher: bool = True, finish_counter: int = 1) -> None:
+        """
+        This function is employed to finish the simulation.
+        :param finisher: Boolean value to finish the simulation.
+        :param finish_counter: Counter to finish the simulation if you want to finish the simulation
+         after a certain process.
+        :return: None
+        """
+        # if statement is prevented to change again and again finisher_counter(if this function execute on process)
+        if self.finisher is False:
+            self.finisher = finisher
+            self.finish_counter = finish_counter
+
     def pacer_driver(self):
-        # this function is employed to run pacer state machine.
+        """
+        This function is employed to run pacer state machine.
+        :return: None
+        """
         state_in_loop = PacerState.INIT
         while True:
             current_state = state_in_loop  # eğer bu olmazsa afterda problem olur
             self.pacer_history.append(current_state)
-            self._pacer_point(current_state, PacerPoint.BEFORE)
             # print(f"Current State: {current_state}")  # debug mode
-            state_in_loop = self.Pacer(state_in_loop)  # loop the pacer with state
+            if self.finisher and current_state is PacerState.PROCESS:
+                if self.finish_counter <= 0:
+                    state_in_loop = PacerState.FINISH
+                self.finish_counter -= 1
+            self._pacer_point(current_state, PacerPoint.BEFORE)
+            state_in_loop = self.Pacer(state_in_loop)  # loop the pacer with state # here is the state machine events.
             self._pacer_point(current_state, PacerPoint.AFTER)
             if state_in_loop is PacerState.END:
                 break  # leave the pacer.
